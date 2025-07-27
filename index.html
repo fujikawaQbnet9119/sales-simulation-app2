@@ -93,7 +93,7 @@
             width: 100% !important; /* Ensure it takes full width */
             height: auto !important; /* Maintain aspect ratio */
         }
-        /* .cluster-description-item { /* This style is no longer needed */
+        .cluster-description-item {
             margin-bottom: 1rem;
             padding-bottom: 1rem;
             border-bottom: 1px dashed #e5e7eb; /* Light dashed line for separation */
@@ -102,7 +102,7 @@
             border-bottom: none; /* No border for the last item */
             margin-bottom: 0;
             padding-bottom: 0;
-        } */
+        }
     </style>
 </head>
 <body class="p-4 sm:p-6 md:p-8">
@@ -128,23 +128,6 @@
         <!-- Message Box for errors/info -->
         <div id="messageBox" class="message-box"></div>
 
-        <!-- Cluster Model Description Card (Removed) -->
-        <!--
-        <div class="card">
-            <h2 class="text-2xl font-bold text-gray-800 mb-5">各クラスターの標準モデル</h2>
-            <p class="text-gray-700 mb-4 text-sm">
-                ロジスティックモデルは、売上成長が時間の経過とともに緩やかに始まり、急速に加速し、最終的に飽和状態に達するS字カーブを表現します。各パラメータは以下の意味を持ちます。
-            </p>
-            <ul class="list-disc list-inside text-gray-600 text-sm mb-6">
-                <li><strong>L (上限値/飽和売上)</strong>: ロジスティック曲線の最終的な到達点。店舗が長期的に達成しうる最大の売上（千円）。</li>
-                <li><strong>k (成長率)</strong>: 売上が飽和値に近づく速さを示すパラメータ。値が大きいほど、成長が急峻になります。</li>
-                <li><strong>x0 (変曲点)</strong>: 成長が最も加速する（または減速し始める）時点の経過月数。この点を超えると成長の勢いが鈍化し始めます。</li>
-            </ul>
-            <div id="clusterModelsDescription" class="space-y-4">
-            </div>
-        </div>
-        -->
-
         <!-- Simulation Results Card -->
         <div id="resultsCard" class="card hidden">
             <h2 class="text-2xl font-bold text-gray-800 mb-5">シミュレーション結果</h2>
@@ -158,10 +141,10 @@
                         <tr>
                             <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider rounded-tl-lg">対象年月</th>
                             <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">経過月数</th>
-                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cluster 0 予測売上</th>
-                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cluster 1 予測売上</th>
-                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cluster 2 予測売上</th>
-                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cluster 3 予測売上</th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">緩やかな成長型 予測売上</th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">高成長安定型 予測売上</th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">超成長型 予測売上</th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">中成長型 予測売上</th>
                         </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
@@ -180,10 +163,18 @@
         // Pythonコードから事前に計算されたロジスティックモデルのパラメータ
         // ユーザーから提供された最新の値に更新
         const logisticParameters = {
-            0: { L: 2048.54, k: 0.0757, x0: -3.77 },
-            1: { L: 3637.21, k: 0.0985, x0: -3.46 },
-            2: { L: 5320.51, k: 0.1530, x0: -2.11 },
-            3: { L: 2758.88, k: 0.0962, x0: -2.43 },
+            0: { L: 2048.54, k: 0.0757, x0: -3.77 }, // 緩やかな成長型
+            1: { L: 3637.21, k: 0.0985, x0: -3.46 }, // 高成長安定型
+            2: { L: 5320.51, k: 0.1530, x0: -2.11 }, // 超成長型
+            3: { L: 2758.88, k: 0.0962, x0: -2.43 }, // 中成長型
+        };
+
+        // クラスターIDと表示名のマッピング
+        const clusterNames = {
+            0: '緩やかな成長型',
+            1: '高成長安定型',
+            2: '超成長型',
+            3: '中成長型'
         };
 
         // Pythonコードから事前に計算された全店舗の平均季節指数
@@ -243,9 +234,14 @@
                 throw new Error("開業日の形式が不正です。YYYY-MM-DD形式で入力してください。");
             }
 
-            for (const clusterId in logisticParameters) {
+            // 全てのクラスターIDを数値として取得
+            const allClusterIds = Object.keys(logisticParameters).map(Number);
+
+            for (const clusterId of allClusterIds) { // `for...in` ではなく `for...of` を使用し、数値として扱う
                 const params = logisticParameters[clusterId];
                 if (!params) { // モデル構築に失敗したクラスタはスキップ
+                    // ただし、結果オブジェクトには空の配列として追加しておく
+                    simulationResults[`Cluster ${clusterId}`] = [];
                     continue;
                 }
 
@@ -301,9 +297,11 @@
                 const sampleDataPoint = simulationResults['Cluster 0'] ? simulationResults['Cluster 0'].find(d => d.経過月数 === monthNum) : null;
                 row['対象年月'] = sampleDataPoint ? sampleDataPoint.対象年月 : '';
 
-                for (const clusterName in simulationResults) {
-                    const dataPoint = simulationResults[clusterName].find(d => d.経過月数 === monthNum);
-                    row[`予測売上_${clusterName}`] = dataPoint ? dataPoint.予測売上 : null;
+                // すべてのクラスターの列が確実に存在するようにする
+                for (const clusterId of allClusterIds) { // 全てのクラスターIDをループ
+                    const clusterDisplayName = clusterNames[clusterId];
+                    const dataPoint = simulationResults[`Cluster ${clusterId}`] ? simulationResults[`Cluster ${clusterId}`].find(d => d.経過月数 === monthNum) : null;
+                    row[`予測売上_${clusterDisplayName}`] = dataPoint ? dataPoint.予測売上 : null;
                 }
                 return row;
             });
@@ -327,14 +325,21 @@
             const colors = ['#1a2b49', '#CC0000', '#4CAF50', '#FFC107']; // ネイビー、赤、緑、黄
             const borderColors = ['#1a2b49', '#CC0000', '#4CAF50', '#FFC107']; // 線の色
 
-            for (let i = 0; i < 4; i++) { // Cluster 0 to 3
-                const clusterName = `Cluster ${i}`;
-                const salesData = simulationData.map(d => d[`予測売上_${clusterName}`]);
+            // Cluster ID の順序を定義 (凡例の表示順を制御)
+            const orderedClusterIds = [0, 1, 2, 3]; // 緩やか、高成長安定、超成長、中成長の順
+
+            for (const clusterId of orderedClusterIds) {
+                const clusterDisplayName = clusterNames[clusterId];
+                // 予測売上データがnullの場合を考慮
+                const salesData = simulationData.map(d => {
+                    const value = d[`予測売上_${clusterDisplayName}`];
+                    return (typeof value === 'number' && !isNaN(value)) ? value : null; // 数値でない場合はnullにする
+                });
                 datasets.push({
-                    label: `${clusterName} モデル`,
+                    label: `${clusterDisplayName} モデル`,
                     data: salesData,
-                    borderColor: borderColors[i % borderColors.length], // 色を循環して使用
-                    backgroundColor: colors[i % colors.length], // 背景色も循環
+                    borderColor: borderColors[clusterId % borderColors.length], // 色を循環して使用
+                    backgroundColor: colors[clusterId % colors.length], // 背景色も循環
                     borderWidth: 2,
                     pointRadius: 0, // ポイントを表示しない
                     fill: false,
@@ -436,15 +441,19 @@
             const tableBody = document.querySelector('#resultsTable tbody');
             tableBody.innerHTML = ''; // 既存の行をクリア
 
+            // クラスターIDの順序を定義 (テーブルの列の表示順を制御)
+            const orderedClusterIdsForTable = [0, 1, 2, 3]; // 緩やか、高成長安定、超成長、中成長の順
+
             simulationData.forEach(rowData => {
                 const row = tableBody.insertRow();
                 row.insertCell().textContent = rowData['対象年月']; // 対象年月を表示
                 row.insertCell().textContent = rowData['経過月数']; // 経過月数を表示
-                for (let i = 0; i < 4; i++) {
-                    const clusterName = `Cluster ${i}`;
+                for (const clusterId of orderedClusterIdsForTable) {
+                    const clusterDisplayName = clusterNames[clusterId];
                     const cell = row.insertCell();
-                    const value = rowData[`予測売上_${clusterName}`];
-                    cell.textContent = value !== null ? value.toLocaleString() : '-'; // nullの場合は'-'を表示
+                    const value = rowData[`予測売上_${clusterDisplayName}`];
+                    // valueがnullまたはundefined、またはNaNの場合に'-'を表示
+                    cell.textContent = (typeof value === 'number' && !isNaN(value)) ? value.toLocaleString() : '-';
                 }
             });
         }
@@ -452,7 +461,7 @@
         // --- CSVダウンロード関数 ---
         function downloadCsv(data, filename = '将来予測シミュレーション結果.csv') {
             // ヘッダーを更新
-            const headers = ['対象年月', '経過月数', 'Cluster 0 予測売上', 'Cluster 1 予測売上', 'Cluster 2 予測売上', 'Cluster 3 予測売上'];
+            const headers = ['対象年月', '経過月数', '緩やかな成長型', '高成長安定型', '超成長型', '中成長型'];
             const csvRows = [];
             csvRows.push(headers.join(','));
 
@@ -460,11 +469,11 @@
                 const values = [
                     row['対象年月'], // 対象年月を追加
                     row['経過月数'], // 経過月数を追加
-                    row['予測売上_Cluster 0'],
-                    row['予測売上_Cluster 1'],
-                    row['予測売上_Cluster 2'],
-                    row['予測売上_Cluster 3']
-                ].map(value => (value !== null ? value : '')); // nullを空文字列に変換
+                    row['予測売上_緩やかな成長型'], // クラスター名を使用
+                    row['予測売上_高成長安定型'],
+                    row['予測売上_超成長型'],
+                    row['予測売上_中成長型']
+                ].map(value => (typeof value === 'number' && !isNaN(value)) ? value : ''); // nullまたはundefined、またはNaNの場合に空文字列に変換
                 csvRows.push(values.join(','));
             });
 
@@ -483,31 +492,6 @@
                 showMessage('お使いのブラウザではCSVダウンロード機能がサポートされていません。', 'error');
             }
         }
-
-        // --- クラスターモデルの説明をレンダリングする関数 (削除) ---
-        /*
-        function renderClusterModelsDescription() {
-            const container = document.getElementById('clusterModelsDescription');
-            container.innerHTML = ''; // 既存の内容をクリア
-
-            for (const clusterId in logisticParameters) {
-                const params = logisticParameters[clusterId];
-                if (!params) continue;
-
-                const itemDiv = document.createElement('div');
-                itemDiv.className = 'cluster-description-item';
-                itemDiv.innerHTML = `
-                    <h3 class="text-lg font-semibold text-gray-800 mb-1">Cluster ${clusterId}</h3>
-                    <p class="text-gray-600 text-sm">
-                        L (上限値/飽和売上): <strong>${params.L.toFixed(2)}</strong> 千円<br>
-                        k (成長率): <strong>${params.k.toFixed(4)}</strong><br>
-                        x0 (変曲点): <strong>${params.x0.toFixed(2)}</strong> ヶ月
-                    </p>
-                `;
-                container.appendChild(itemDiv);
-            }
-        }
-        */
 
         // --- イベントリスナー ---
         document.getElementById('simulateButton').addEventListener('click', () => {
@@ -551,18 +535,17 @@
                 return {
                     '対象年月': targetYearMonth,
                     '経過月数': elapsedMonths,
-                    '予測売上_Cluster 0': parseInt(cells[2].textContent.replace(/,/g, '')),
-                    '予測売上_Cluster 1': parseInt(cells[3].textContent.replace(/,/g, '')),
-                    '予測売上_Cluster 2': parseInt(cells[4].textContent.replace(/,/g, '')),
-                    '予測売上_Cluster 3': parseInt(cells[5].textContent.replace(/,/g, '')),
+                    '予測売上_緩やかな成長型': parseInt(cells[2].textContent.replace(/,/g, '')),
+                    '予測売上_高成長安定型': parseInt(cells[3].textContent.replace(/,/g, '')),
+                    '予測売上_超成長型': parseInt(cells[4].textContent.replace(/,/g, '')),
+                    '予測売上_中成長型': parseInt(cells[5].textContent.replace(/,/g, '')),
                 };
             });
             downloadCsv(rows);
         });
 
-        // ページ読み込み時にクラスターモデルの説明をレンダリング (呼び出しを削除)
+        // ページ読み込み時の処理 (ここでは特に何もしない)
         document.addEventListener('DOMContentLoaded', () => {
-            // renderClusterModelsDescription(); // この行を削除
             // document.getElementById('simulateButton').click(); // 自動実行したい場合はコメント解除
         });
     </script>
