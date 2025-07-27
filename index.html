@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>店舗売上将来予測シミュレーション</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Custom styles for Inter font and general aesthetics */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc; /* Lighter background for cleaner look */
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        .card {
+            background-color: #ffffff;
+            border-radius: 0.75rem; /* Slightly less rounded for a cleaner look */
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08); /* Softer shadow */
+            padding: 2rem; /* Increased padding for more white space */
+            margin-bottom: 2rem; /* Increased margin */
+        }
+        .btn-primary {
+            background-color: #1a2b49; /* Deep Navy Blue, close to QB House brand color */
+            color: white;
+            padding: 0.75rem 2rem; /* Wider padding */
+            border-radius: 0.5rem; /* Slightly less rounded buttons */
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+        .btn-primary:hover {
+            background-color: #0d1a2d; /* Darker navy on hover */
+        }
+        .btn-secondary {
+            background-color: #6b7280; /* Gray 500 */
+            color: white;
+            padding: 0.75rem 2rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+        .btn-secondary:hover {
+            background-color: #4b5563; /* Gray 600 */
+        }
+        input[type="number"], input[type="date"] { /* Apply styles to date input too */
+            border: 1px solid #d1d5db; /* Gray 300 */
+            border-radius: 0.5rem;
+            padding: 0.6rem 0.75rem; /* Slightly more vertical padding */
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 1rem; /* Consistent font size */
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        input[type="number"]:focus, input[type="date"]:focus { /* Apply focus styles to date input too */
+            border-color: #1a2b49; /* Focus border matches brand color */
+            box-shadow: 0 0 0 2px rgba(26, 43, 73, 0.2); /* Subtle focus ring */
+            outline: none;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1.5rem; /* More space above table */
+        }
+        th, td {
+            border: 1px solid #e5e7eb; /* Gray 200 */
+            padding: 0.8rem 1rem; /* Slightly more padding in table cells */
+            text-align: left;
+            font-size: 0.95rem;
+        }
+        th {
+            background-color: #f9fafb; /* Gray 50 */
+            font-weight: 600;
+            color: #4b5563; /* Darker gray for headers */
+        }
+        .message-box {
+            background-color: #fefcbf; /* Lighter yellow */
+            border: 1px solid #fde68a; /* Lighter yellow border */
+            color: #92400e; /* Darker orange text */
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1.5rem;
+            display: none;
+        }
+        /* Adjusting Chart.js canvas size responsiveness */
+        #salesChart {
+            max-height: 400px; /* Limit chart height on larger screens */
+            width: 100% !important; /* Ensure it takes full width */
+            height: auto !important; /* Maintain aspect ratio */
+        }
+        .cluster-description-item {
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px dashed #e5e7eb; /* Light dashed line for separation */
+        }
+        .cluster-description-item:last-child {
+            border-bottom: none; /* No border for the last item */
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-6 md:p-8">
+    <div class="container">
+        <h1 class="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-8 text-center">店舗売上将来予測シミュレーション</h1>
+
+        <!-- Input Card -->
+        <div class="card">
+            <h2 class="text-2xl font-bold text-gray-800 mb-5">シミュレーション条件設定</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div>
+                    <label for="openingDate" class="block text-sm font-medium text-gray-700 mb-2">開業日</label>
+                    <input type="date" id="openingDate" value="2024-11-01">
+                </div>
+                <div>
+                    <label for="baselineSales" class="block text-sm font-medium text-gray-700 mb-2">2ヶ月目基準売上 (千円)</label>
+                    <input type="number" id="baselineSales" value="1300" min="0">
+                </div>
+            </div>
+            <button id="simulateButton" class="btn-primary w-full md:w-auto">シミュレーション実行</button>
+        </div>
+
+        <!-- Message Box for errors/info -->
+        <div id="messageBox" class="message-box"></div>
+
+        <!-- Cluster Model Description Card -->
+        <div class="card">
+            <h2 class="text-2xl font-bold text-gray-800 mb-5">各クラスターの標準モデル</h2>
+            <p class="text-gray-700 mb-4 text-sm">
+                ロジスティックモデルは、売上成長が時間の経過とともに緩やかに始まり、急速に加速し、最終的に飽和状態に達するS字カーブを表現します。各パラメータは以下の意味を持ちます。
+            </p>
+            <ul class="list-disc list-inside text-gray-600 text-sm mb-6">
+                <li><strong>L (上限値/飽和売上)</strong>: ロジスティック曲線の最終的な到達点。店舗が長期的に達成しうる最大の売上（千円）。</li>
+                <li><strong>k (成長率)</strong>: 売上が飽和値に近づく速さを示すパラメータ。値が大きいほど、成長が急峻になります。</li>
+                <li><strong>x0 (変曲点)</strong>: 成長が最も加速する（または減速し始める）時点の経過月数。この点を超えると成長の勢いが鈍化し始めます。</li>
+            </ul>
+            <div id="clusterModelsDescription" class="space-y-4">
+                <!-- Cluster model descriptions will be inserted here by JavaScript -->
+            </div>
+        </div>
+
+        <!-- Simulation Results Card -->
+        <div id="resultsCard" class="card hidden">
+            <h2 class="text-2xl font-bold text-gray-800 mb-5">シミュレーション結果</h2>
+            <div class="mb-6">
+                <canvas id="salesChart"></canvas>
+            </div>
+            <h3 class="text-xl font-bold text-gray-800 mb-4">予測売上データ</h3>
+            <div class="overflow-x-auto rounded-lg shadow-sm border border-gray-200">
+                <table id="resultsTable" class="min-w-full divide-y divide-gray-200">
+                    <thead>
+                        <tr>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider rounded-tl-lg">対象年月</th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">経過月数</th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cluster 0 予測売上</th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cluster 1 予測売上</th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cluster 2 予測売上</th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cluster 3 予測売上</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        <!-- Data will be inserted here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-8 text-right">
+                <button id="downloadCsvButton" class="btn-secondary">CSVダウンロード</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 組み込みデータ ---
+        // Pythonコードから事前に計算されたロジスティックモデルのパラメータ
+        // ユーザーから提供された最新の値に更新
+        const logisticParameters = {
+            0: { L: 2048.54, k: 0.0757, x0: -3.77 },
+            1: { L: 3637.21, k: 0.0985, x0: -3.46 },
+            2: { L: 5320.51, k: 0.1530, x0: -2.11 },
+            3: { L: 2758.88, k: 0.0962, x0: -2.43 },
+        };
+
+        // Pythonコードから事前に計算された全店舗の平均季節指数
+        // ユーザーから提供された最新の値に更新
+        const averageSeasonalIndex = [
+            { 月: 1, 季節指数: 0.900 },
+            { 月: 2, 季節指数: 0.904 },
+            { 月: 3, 季節指数: 1.031 },
+            { 月: 4, 季節指数: 1.002 },
+            { 月: 5, 季節指数: 1.045 },
+            { 月: 6, 季節指数: 1.053 },
+            { 月: 7, 季節指数: 1.083 },
+            { 月: 8, 季節指数: 1.061 },
+            { 月: 9, 季節指数: 0.964 },
+            { 月: 10, 季節指数: 0.986 },
+            { 月: 11, 季節指数: 0.928 },
+            { 月: 12, 季節指数: 1.043 },
+        ];
+
+        // --- ヘルパー関数 ---
+        function showMessage(message, type = 'info') {
+            const messageBox = document.getElementById('messageBox');
+            messageBox.textContent = message;
+            messageBox.style.display = 'block';
+            if (type === 'error') {
+                messageBox.style.backgroundColor = '#f8d7da'; /* Red 100 */
+                messageBox.style.borderColor = '#f5c6cb'; /* Red 200 */
+                messageBox.style.color = '#721c24'; /* Red 800 */
+            } else {
+                messageBox.style.backgroundColor = '#fefcbf'; /* Lighter yellow */
+                messageBox.style.borderColor = '#fde68a'; /* Lighter yellow border */
+                messageBox.style.color = '#92400e'; /* Darker orange text */
+            }
+        }
+
+        function hideMessage() {
+            document.getElementById('messageBox').style.display = 'none';
+        }
+
+        // ロジスティック曲線モデル関数 (Pythonから移植)
+        function logisticModel(x, L, k, x0) {
+            return L / (1 + Math.exp(-k * (x - x0)));
+        }
+
+        // 指定された年月の総日数を取得するヘルパー関数 (0-indexed month)
+        function getDaysInMonth(year, month) {
+            return new Date(year, month + 1, 0).getDate();
+        }
+
+        // --- シミュレーション関数 ---
+        function simulateStoreGrowth(openingDateStr, baseline2ndMonthSales) {
+            const simulationResults = {};
+            const xRange = Array.from({ length: 61 }, (_, i) => i + 1); // 1ヶ月目から61ヶ月目まで
+
+            const openingDate = new Date(openingDateStr); // 開業日をDateオブジェクトに変換
+            if (isNaN(openingDate.getTime())) {
+                throw new Error("開業日の形式が不正です。YYYY-MM-DD形式で入力してください。");
+            }
+
+            for (const clusterId in logisticParameters) {
+                const params = logisticParameters[clusterId];
+                if (!params) { // モデル構築に失敗したクラスタはスキップ
+                    continue;
+                }
+
+                const { L, k, x0 } = params;
+
+                // ロジスティックモデルによる季節調整済みトレンドの予測
+                const yPredictedUnadjusted = xRange.map(x => logisticModel(x, L, k, x0));
+
+                // 2ヶ月目の基準売上に合わせてトレンドを補正
+                // モデルの2ヶ月目（経過月数2）のトレンド値
+                const yAtModel2ndMonth = logisticModel(2, L, k, x0);
+                const adjustment = baseline2ndMonthSales - yAtModel2ndMonth;
+                const yPredictedAdjusted = yPredictedUnadjusted.map(y => y + adjustment);
+
+                // 月の計算 (開業日を基準に) と年月の計算
+                const tempResults = [];
+                for (let i = 0; i < xRange.length; i++) {
+                    const elapsedMonths = xRange[i]; // 経過月数
+
+                    // 対象年月の計算 (開業日から経過月数を加算)
+                    const targetDate = new Date(openingDate.getFullYear(), openingDate.getMonth() + (elapsedMonths - 1), openingDate.getDate());
+                    const targetYear = targetDate.getFullYear();
+                    const targetMonthNum = targetDate.getMonth() + 1; // getMonth()は0-indexedのため+1
+                    const targetYearMonth = `${targetYear}年${targetMonthNum}月`;
+
+                    const seasonalIndexObj = averageSeasonalIndex.find(item => item.月 === targetMonthNum);
+                    const seasonalIndex = seasonalIndexObj ? seasonalIndexObj.季節指数 : 1.0; // 見つからない場合は1.0をデフォルトに
+
+                    let predictedSales = yPredictedAdjusted[i] * seasonalIndex;
+
+                    // 1ヶ月目の売上を実質営業日数で調整
+                    if (elapsedMonths === 1) {
+                        const openingDay = openingDate.getDate();
+                        const daysInOpeningMonth = getDaysInMonth(openingDate.getFullYear(), openingDate.getMonth());
+                        const operatingDaysInOpeningMonth = daysInOpeningMonth - openingDay + 1;
+                        const prorationFactor = operatingDaysInOpeningMonth / daysInOpeningMonth;
+                        predictedSales = predictedSales * prorationFactor;
+                    }
+
+                    tempResults.push({
+                        経過月数: elapsedMonths,
+                        対象年月: targetYearMonth,
+                        予測売上: Math.round(predictedSales) // 整数値に丸める
+                    });
+                }
+                simulationResults[`Cluster ${clusterId}`] = tempResults;
+            }
+
+            // 結果を結合してDataFrameのような形式にする
+            const combinedData = xRange.map(monthNum => {
+                const row = { '経過月数': monthNum };
+                // 最初のクラスターのデータから対象年月を取得（全クラスターで同じはず）
+                const sampleDataPoint = simulationResults['Cluster 0'] ? simulationResults['Cluster 0'].find(d => d.経過月数 === monthNum) : null;
+                row['対象年月'] = sampleDataPoint ? sampleDataPoint.対象年月 : '';
+
+                for (const clusterName in simulationResults) {
+                    const dataPoint = simulationResults[clusterName].find(d => d.経過月数 === monthNum);
+                    row[`予測売上_${clusterName}`] = dataPoint ? dataPoint.予測売上 : null;
+                }
+                return row;
+            });
+
+            return combinedData;
+        }
+
+        // --- グラフ描画関数 ---
+        let salesChart; // Chart.jsインスタンスを保持
+
+        function renderChart(simulationData, openingDateStr, baselineSales) {
+            const ctx = document.getElementById('salesChart').getContext('2d');
+
+            if (salesChart) {
+                salesChart.destroy(); // 既存のチャートがあれば破棄
+            }
+
+            const labels = simulationData.map(d => d['経過月数']); // グラフのX軸は経過月数
+            const datasets = [];
+            // QBハウスのブランドカラーを意識した色に変更
+            const colors = ['#1a2b49', '#CC0000', '#4CAF50', '#FFC107']; // ネイビー、赤、緑、黄
+            const borderColors = ['#1a2b49', '#CC0000', '#4CAF50', '#FFC107']; // 線の色
+
+            for (let i = 0; i < 4; i++) { // Cluster 0 to 3
+                const clusterName = `Cluster ${i}`;
+                const salesData = simulationData.map(d => d[`予測売上_${clusterName}`]);
+                datasets.push({
+                    label: `${clusterName} モデル`,
+                    data: salesData,
+                    borderColor: borderColors[i % borderColors.length], // 色を循環して使用
+                    backgroundColor: colors[i % colors.length], // 背景色も循環
+                    borderWidth: 2,
+                    pointRadius: 0, // ポイントを表示しない
+                    fill: false,
+                    tension: 0.1
+                });
+            }
+
+            // 2ヶ月目基準売上のラインを追加
+            datasets.push({
+                label: `2ヶ月目基準売上 (季節調整前: ${baselineSales}千円)`, // ラベルをより明確に
+                data: Array(labels.length).fill(baselineSales),
+                borderColor: '#6b7280', /* Gray 500 */
+                borderDash: [5, 5],
+                borderWidth: 1,
+                pointRadius: 0,
+                fill: false
+            });
+
+            salesChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false, // 親要素のサイズに合わせる
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `開業日 ${openingDateStr}, 2ヶ月目売上 ${baselineSales}千円での将来予測（ロジスティックモデル）`,
+                            font: {
+                                size: 18, /* Slightly larger title font */
+                                weight: 'bold'
+                            },
+                            color: '#374151' /* Darker text color for title */
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: '#1a2b49', /* Tooltip background matches brand color */
+                            titleFont: { size: 14 },
+                            bodyFont: { size: 12 },
+                            padding: 10,
+                            cornerRadius: 6
+                        },
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                font: {
+                                    size: 12
+                                },
+                                color: '#4b5563' /* Legend text color */
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: '開業からの経過月数',
+                                font: {
+                                    size: 14,
+                                    weight: 'bold'
+                                },
+                                color: '#4b5563'
+                            },
+                            ticks: {
+                                color: '#6b7280' /* Tick label color */
+                            },
+                            grid: {
+                                color: '#e5e7eb' /* Lighter grid lines */
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: '予測売上（1000円単位）',
+                                font: {
+                                    size: 14,
+                                    weight: 'bold'
+                                },
+                                color: '#4b5563'
+                            },
+                            ticks: {
+                                color: '#6b7280' /* Tick label color */
+                            },
+                            grid: {
+                                color: '#e5e7eb' /* Lighter grid lines */
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- テーブル表示関数 ---
+        function renderTable(simulationData) {
+            const tableBody = document.querySelector('#resultsTable tbody');
+            tableBody.innerHTML = ''; // 既存の行をクリア
+
+            simulationData.forEach(rowData => {
+                const row = tableBody.insertRow();
+                row.insertCell().textContent = rowData['対象年月']; // 対象年月を表示
+                row.insertCell().textContent = rowData['経過月数']; // 経過月数を表示
+                for (let i = 0; i < 4; i++) {
+                    const clusterName = `Cluster ${i}`;
+                    const cell = row.insertCell();
+                    const value = rowData[`予測売上_${clusterName}`];
+                    cell.textContent = value !== null ? value.toLocaleString() : '-'; // nullの場合は'-'を表示
+                }
+            });
+        }
+
+        // --- CSVダウンロード関数 ---
+        function downloadCsv(data, filename = '将来予測シミュレーション結果.csv') {
+            // ヘッダーを更新
+            const headers = ['対象年月', '経過月数', 'Cluster 0 予測売上', 'Cluster 1 予測売上', 'Cluster 2 予測売上', 'Cluster 3 予測売上'];
+            const csvRows = [];
+            csvRows.push(headers.join(','));
+
+            data.forEach(row => {
+                const values = [
+                    row['対象年月'], // 対象年月を追加
+                    row['経過月数'], // 経過月数を追加
+                    row['予測売上_Cluster 0'],
+                    row['予測売上_Cluster 1'],
+                    row['予測売上_Cluster 2'],
+                    row['予測売上_Cluster 3']
+                ].map(value => (value !== null ? value : '')); // nullを空文字列に変換
+                csvRows.push(values.join(','));
+            });
+
+            const csvString = csvRows.join('\n');
+            const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            if (link.download !== undefined) { // HTML5 download attribute
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } else {
+                showMessage('お使いのブラウザではCSVダウンロード機能がサポートされていません。', 'error');
+            }
+        }
+
+        // --- クラスターモデルの説明をレンダリングする関数 ---
+        function renderClusterModelsDescription() {
+            const container = document.getElementById('clusterModelsDescription');
+            container.innerHTML = ''; // 既存の内容をクリア
+
+            for (const clusterId in logisticParameters) {
+                const params = logisticParameters[clusterId];
+                if (!params) continue;
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'cluster-description-item';
+                itemDiv.innerHTML = `
+                    <h3 class="text-lg font-semibold text-gray-800 mb-1">Cluster ${clusterId}</h3>
+                    <p class="text-gray-600 text-sm">
+                        L (上限値/飽和売上): <strong>${params.L.toFixed(2)}</strong> 千円<br>
+                        k (成長率): <strong>${params.k.toFixed(4)}</strong><br>
+                        x0 (変曲点): <strong>${params.x0.toFixed(2)}</strong> ヶ月
+                    </p>
+                `;
+                container.appendChild(itemDiv);
+            }
+        }
+
+        // --- イベントリスナー ---
+        document.getElementById('simulateButton').addEventListener('click', () => {
+            hideMessage(); // メッセージを非表示にする
+
+            const openingDateStr = document.getElementById('openingDate').value; // 開業日文字列を取得
+            const baselineSales = parseFloat(document.getElementById('baselineSales').value);
+
+            if (!openingDateStr) {
+                showMessage('開業日を入力してください。', 'error');
+                return;
+            }
+            if (isNaN(baselineSales) || baselineSales < 0) {
+                showMessage('2ヶ月目基準売上は0以上の数値を入力してください。', 'error');
+                return;
+            }
+
+            try {
+                const simulationData = simulateStoreGrowth(openingDateStr, baselineSales);
+                renderChart(simulationData, openingDateStr, baselineSales); // グラフタイトルにも開業日を渡す
+                renderTable(simulationData);
+                document.getElementById('resultsCard').classList.remove('hidden'); // 結果カードを表示
+            } catch (error) {
+                console.error("シミュレーション中にエラーが発生しました:", error);
+                showMessage(`シミュレーション中にエラーが発生しました: ${error.message}`, 'error');
+            }
+        });
+
+        document.getElementById('downloadCsvButton').addEventListener('click', () => {
+            const tableBody = document.querySelector('#resultsTable tbody');
+            if (tableBody.rows.length === 0) {
+                showMessage('ダウンロードするデータがありません。まずシミュレーションを実行してください。', 'info');
+                return;
+            }
+            // テーブルから直接データを取得してダウンロード
+            const rows = Array.from(tableBody.rows).map(row => {
+                const cells = Array.from(row.cells);
+                // 対象年月と経過月数のデータを取得
+                const targetYearMonth = cells[0].textContent;
+                const elapsedMonths = parseInt(cells[1].textContent);
+                return {
+                    '対象年月': targetYearMonth,
+                    '経過月数': elapsedMonths,
+                    '予測売上_Cluster 0': parseInt(cells[2].textContent.replace(/,/g, '')),
+                    '予測売上_Cluster 1': parseInt(cells[3].textContent.replace(/,/g, '')),
+                    '予測売上_Cluster 2': parseInt(cells[4].textContent.replace(/,/g, '')),
+                    '予測売上_Cluster 3': parseInt(cells[5].textContent.replace(/,/g, '')),
+                };
+            });
+            downloadCsv(rows);
+        });
+
+        // ページ読み込み時にクラスターモデルの説明をレンダリング
+        document.addEventListener('DOMContentLoaded', () => {
+            renderClusterModelsDescription();
+            // document.getElementById('simulateButton').click(); // 自動実行したい場合はコメント解除
+        });
+    </script>
+</body>
+</html>
